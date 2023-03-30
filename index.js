@@ -17,17 +17,19 @@ const db = mysql.createConnection(
 function viewEmployees() {
   db.query(
     `SELECT employee.id, 
-    first_name AS "First Name", 
-    last_name AS "Last Name", 
+    CONCAT(employee.first_name, ' ', employee.last_name) AS "Employee Name",
     role.title AS Title, 
     department.name AS Department, 
     role.salary AS Salary, 
-    employee.manager_id
+    CONCAT(manager.first_name, ' ', manager.last_name) AS "Manager Name"
     FROM employee 
     JOIN role 
     ON employee.role_id = role.id 
     JOIN department 
-    ON role.department_id = department.id`,
+    ON role.department_id = department.id
+    LEFT JOIN employee manager
+    ON employee.manager_id = manager.id
+    `,
     (err, results) => {
       if (err) {
         return console.error(err);
@@ -39,8 +41,81 @@ function viewEmployees() {
     }
   );
 }
-function addEmployee() {}
-function updateRole() {}
+function addEmployee() {
+  db.query(`SELECT role.id AS value, role.title AS name FROM role`, (err, roleTitle) => {
+    if (err) throw err;
+    db.query(
+    `SELECT CONCAT(employee.first_name, " ", employee.last_name) AS name, 
+    employee.id AS value 
+    FROM employee 
+    WHERE employee.manager_id IS NULL`, (err, employeeName) => {
+      if (err) throw err;
+      inquirer
+      .prompt([
+        {
+          type: "input",
+          message: "Enter the first name of the employee:",
+          name: "firstName"
+        },
+        {
+          type: "input",
+          message: "Enter the last name of the employee:",
+          name: "lastName"
+        },
+        {
+          type: "list",
+          message: "Select the role of the employee:",
+          choices: roleTitle,
+          name: "role"
+        },
+        {
+          type: "list",
+          message: "Select the manager of the employee:",
+          choices: employeeName,
+          name: "manager"
+        }
+      ]).then((res) => {
+        db.query(`INSERT INTO employee (first_name, last_name, role_id, manager_id)
+        VALUES ("${res.firstName}", "${res.lastName}", "${res.role}", "${res.manager}")`, (err) => {
+          if (err) throw err;
+          console.log("Added employee to database.");
+          startPage();
+        })
+      })
+    })
+  });
+}
+function updateRole() {
+  db.query(`SELECT employee.id AS value, CONCAT(employee.first_name, ' ', employee.last_name) AS name FROM employee`, (err, employees) => {
+    if (err) throw err;
+    db.query(`SELECT role.id AS value, title AS name FROM role`, (err, roles) => {
+    if (err) throw err;
+    inquirer.prompt([
+      {
+        type: "list",
+        message: "Select an employee to change role:",
+        choices: employees,
+        name: "employee"
+      },
+      {
+        type: "list",
+        message: "Select a new role for employee",
+        choices: roles,
+        name: "role"
+      }
+    ]).then((res) => {
+      db.query(`
+      UPDATE employee 
+      SET employee.role_id = ${res.role} 
+      WHERE employee.id = ${res.employee}`, (err, results) => {
+        if (err) throw err;
+        console.log("Employee Updated!");
+        startPage();
+      })
+    })
+  })
+})
+}
 function viewRoles() {
   db.query(
     "SELECT role.id, title AS Title, salary AS Salary, department.name AS Department FROM role JOIN department ON role.department_id = department.id",
@@ -55,7 +130,45 @@ function viewRoles() {
     }
   );
 }
-function addRole() {}
+// Adds a new role to the role table
+function addRole() {
+  db.query("SELECT department.name FROM department", (err, results) => {
+    inquirer
+      .prompt([
+        {
+          type: "input",
+          message: "Enter the name of the role:",
+          name: "name",
+        },
+        {
+          type: "number",
+          message: "Enter the salary of the role",
+          name: "salary",
+        },
+        {
+          type: "list",
+          message: "Select the department of the role",
+          choices: results,
+          name: "department",
+        },
+      ])
+      .then((res) => {
+      db.query(`SELECT department.id FROM department WHERE name="${res.department}"`, (err, results) => {
+        if (err) throw err;
+        db.query(
+          `INSERT INTO role (title, salary, department_id)
+    VALUES ("${res.name}", "${res.salary}", ${parseInt(results[0].id)})`,
+          (err) => {
+            if (err) throw err;
+            console.log("Added role!");
+          startPage();
+          }
+        );
+      })
+        
+      });
+  });
+}
 // Logs a table of the departments with their ids
 function viewDepartments() {
   db.query(
@@ -72,7 +185,22 @@ function viewDepartments() {
   );
 }
 function addDepartment() {
-  
+  inquirer
+    .prompt([
+      {
+        type: "input",
+        message: "Enter the department name:",
+        name: "addNewDepartment",
+      },
+    ])
+    .then((department) => {
+      db.query(`INSERT INTO department (name)
+    VALUES ("${department.addNewDepartment}")`);
+      console.log(
+        `Successfully added "${department.addNewDepartment}" as new department`
+      );
+      startPage();
+    });
 }
 
 // Prompts list of choices and redirects to another prompt on selection
